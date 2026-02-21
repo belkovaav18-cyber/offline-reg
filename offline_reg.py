@@ -3,47 +3,51 @@ import gspread
 from google.oauth2.service_account import Credentials
 import pandas as pd
 from datetime import datetime
-import os
+import json
 
 # --- Конфигурация ---
 SPREADSHEET_ID = 'YOUR_GOOGLE_SHEET_ID_HERE'  # ЗАМЕНИТЕ НА ВАШ ID
 
 # Названия листов
-SOURCE_SHEET_NAME = 'ЯндексФорм'  # Название листа с онлайн-регистрацией
+SOURCE_SHEET_NAME = 'ЯндексФорм'
 TARGET_SHEET_NAME_PREFIX = 'Офлайн регистрация'
 
-# --- УПРОЩЕННАЯ АУТЕНТИФИКАЦИЯ ДЛЯ ЛОКАЛЬНОЙ РАБОТЫ ---
-# Просто используем файл credentials.json из той же папки
+# --- АУТЕНТИФИКАЦИЯ ЧЕРЕЗ SECRETS (ДЛЯ STREAMLIT CLOUD) ---
 try:
-    # Определяем путь к файлу credentials.json (в той же папке, где и скрипт)
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    creds_path = os.path.join(current_dir, 'credentials.json')
-    
-    # Проверяем, существует ли файл
-    if not os.path.exists(creds_path):
-        st.error(f"❌ Файл credentials.json не найден по пути: {creds_path}")
-        st.info("📁 Убедитесь, что файл credentials.json находится в той же папке, что и скрипт offline_reg.py")
+    # Проверяем, есть ли секреты
+    if 'gcp_service_account' not in st.secrets:
+        st.error("❌ Секреты не настроены! Добавьте их в Streamlit Cloud.")
+        st.info("📝 Зайдите в Manage app → Settings → Secrets")
         st.stop()
     
-    # Авторизуемся
-    creds = Credentials.from_service_account_file(
-        creds_path,
+    # Загружаем credentials из секретов
+    credentials_info = dict(st.secrets["gcp_service_account"])
+    
+    # Исправляем приватный ключ (заменяем \\n на реальные переносы)
+    if 'private_key' in credentials_info:
+        credentials_info['private_key'] = credentials_info['private_key'].replace('\\n', '\n')
+    
+    # Создаем credentials
+    creds = Credentials.from_service_account_info(
+        credentials_info,
         scopes=['https://www.googleapis.com/auth/spreadsheets',
                 'https://www.googleapis.com/auth/drive']
     )
+    
+    # Авторизуемся
     client = gspread.authorize(creds)
     st.sidebar.success("✅ Подключено к Google Sheets")
     
 except Exception as e:
-    st.sidebar.error(f"❌ Ошибка аутентификации: {e}")
+    st.sidebar.error(f"❌ Ошибка аутентификации: {str(e)[:100]}...")
     st.stop()
 
-# Открываем таблицу по ID
+# Открываем таблицу
 try:
     sh = client.open_by_key(SPREADSHEET_ID)
-    st.sidebar.success(f"✅ Таблица открыта")
+    st.sidebar.success("✅ Таблица открыта")
 except Exception as e:
-    st.sidebar.error(f"❌ Не удалось открыть таблицу. Проверьте SPREADSHEET_ID и права доступа.")
+    st.sidebar.error(f"❌ Не удалось открыть таблицу: {str(e)[:100]}...")
     st.stop()
 
 
@@ -191,3 +195,4 @@ if search_surname:
                     # st.cache_data.clear()
                 else:
                     st.error("Не удалось сохранить данные.")
+
