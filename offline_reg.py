@@ -9,7 +9,7 @@ import json
 SPREADSHEET_ID = '10cBNkDQ3fOCajBIjeAsaCPsivEfVShGZ-BHmLcC6l5s'  # ЗАМЕНИТЕ НА ВАШ ID
 
 # Названия листов
-SOURCE_SHEET_NAME = 'ЯндексФорм'
+SOURCE_SHEET_NAME = 'Лист1'
 TARGET_SHEET_NAME_PREFIX = 'Офлайн регистрация'
 
 # --- АУТЕНТИФИКАЦИЯ ЧЕРЕЗ SECRETS (ДЛЯ STREAMLIT CLOUD) ---
@@ -195,6 +195,7 @@ if search_surname:
                     # st.cache_data.clear()
                 else:
                     st.error("Не удалось сохранить данные.")
+
 
 
 
