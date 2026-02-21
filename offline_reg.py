@@ -205,7 +205,7 @@ if search_surname:
         st.divider()
         st.subheader(f"Данные участника: {full_name}")
 
-        with st.form(key='edit_form'):
+                with st.form(key='edit_form'):
             # Разбиваем на колонки
             col_a, col_b, col_c = st.columns(3)
             
@@ -215,10 +215,10 @@ if search_surname:
                 # Ищем дату рождения
                 birth_date = ''
                 for col in df.columns:
-                    if 'рожден' in col.lower() or 'birth' in col.lower() or 'дата' in col.lower() and 'рож' in col.lower():
+                    if 'рожден' in col.lower() or 'birth' in col.lower() or ('дата' in col.lower() and 'рож' in col.lower()):
                         birth_date = participant.get(col, '')
                         break
-                st.text_input("Дата рождения", value=birth_date, disabled=True)
+                st.text_input("Дата рождения", value=str(birth_date), disabled=True)
                 
                 # Ищем оргвзнос
                 fee = ''
@@ -226,7 +226,7 @@ if search_surname:
                     if 'оргвзнос' in col.lower() or 'взнос' in col.lower() or 'fee' in col.lower():
                         fee = participant.get(col, '')
                         break
-                st.text_input("Оргвзнос (текущий)", value=fee, disabled=True)
+                st.text_input("Оргвзнос (текущий)", value=str(fee), disabled=True)
 
             with col_b:
                 # Редактируемые поля - даты
@@ -236,16 +236,41 @@ if search_surname:
                 # Ищем колонки с датами
                 for col in df.columns:
                     if 'заезд' in col.lower() or 'приезд' in col.lower() or 'check-in' in col.lower():
-                        try:
-                            check_in_value = pd.to_datetime(participant.get(col, datetime.now())).date()
-                        except:
-                            check_in_value = datetime.now().date()
+                        date_val = participant.get(col, None)
+                        if date_val and pd.notna(date_val):
+                            try:
+                                # Пробуем разные форматы дат
+                                if isinstance(date_val, str):
+                                    # Пробуем разные форматы строк
+                                    for fmt in ['%Y-%m-%d', '%d.%m.%Y', '%Y/%m/%d', '%d/%m/%Y']:
+                                        try:
+                                            check_in_value = datetime.strptime(date_val, fmt).date()
+                                            break
+                                        except:
+                                            continue
+                                else:
+                                    # Если это уже datetime объект
+                                    check_in_value = pd.to_datetime(date_val).date()
+                            except:
+                                check_in_value = datetime.now().date()
+                        break
                     
                     if 'отъезд' in col.lower() or 'выезд' in col.lower() or 'check-out' in col.lower() or 'от\'езд' in col.lower():
-                        try:
-                            check_out_value = pd.to_datetime(participant.get(col, datetime.now())).date()
-                        except:
-                            check_out_value = datetime.now().date()
+                        date_val = participant.get(col, None)
+                        if date_val and pd.notna(date_val):
+                            try:
+                                if isinstance(date_val, str):
+                                    for fmt in ['%Y-%m-%d', '%d.%m.%Y', '%Y/%m/%d', '%d/%m/%Y']:
+                                        try:
+                                            check_out_value = datetime.strptime(date_val, fmt).date()
+                                            break
+                                        except:
+                                            continue
+                                else:
+                                    check_out_value = pd.to_datetime(date_val).date()
+                            except:
+                                check_out_value = datetime.now().date()
+                        break
                 
                 # Если не нашли, используем текущую дату
                 if check_in_value is None:
@@ -258,6 +283,10 @@ if search_surname:
                 
                 # Пересчет ночей
                 calculated_nights = (new_check_out - new_check_in).days
+                if calculated_nights < 0:
+                    st.warning("⚠️ Дата отъезда раньше даты заезда!")
+                    calculated_nights = 0
+                
                 nights = st.number_input("Количество ночей", value=calculated_nights, disabled=True)
 
             with col_c:
@@ -266,12 +295,14 @@ if search_surname:
                 for col in df.columns:
                     if 'тариф' in col.lower() or 'стоимость' in col.lower() or 'tariff' in col.lower():
                         try:
-                            tariff_value = float(participant.get(col, 0))
+                            val = participant.get(col, 0)
+                            if val and pd.notna(val):
+                                tariff_value = float(val)
                         except:
                             tariff_value = 0
                         break
                 
-                new_tariff = st.number_input("Тариф проживания (₽/ночь)", value=tariff_value)
+                new_tariff = st.number_input("Тариф проживания (₽/ночь)", value=float(tariff_value))
                 
                 # Новый оргвзнос
                 new_fee = st.text_input("Новый оргвзнос (если меняется)", value="")
@@ -280,28 +311,58 @@ if search_surname:
                 accommodation_cost = calculate_accommodation_cost(calculated_nights, new_tariff)
                 st.metric("Стоимость проживания", f"{accommodation_cost} ₽")
 
-            # Кнопка сохранения
+            # Кнопка сохранения - ОБЯЗАТЕЛЬНО внутри формы!
             submitted = st.form_submit_button("✅ Сохранить изменения в офлайн-регистрацию")
 
-            if submitted:
-                # Формируем данные для сохранения
-                data_to_save = participant.copy()
-                
-                # Обновляем измененные поля
-                data_to_save['Дата заезда (новая)'] = str(new_check_in)
-                data_to_save['Дата отъезда (новая)'] = str(new_check_out)
-                data_to_save['Количество ночей'] = calculated_nights
-                data_to_save['Тариф проживания'] = new_tariff
-                data_to_save['Стоимость проживания'] = accommodation_cost
-                
-                if new_fee:
-                    data_to_save['Оргвзнос (новый)'] = new_fee
-                
-                data_to_save['Дата и время регистрации'] = str(datetime.now())
-                data_to_save['Регистратор'] = 'Офлайн'
-                
-                # Сохраняем
-                if save_to_target_sheet(data_to_save):
-                    st.success("✅ Данные успешно сохранены в офлайн-регистрацию!")
-                else:
-                    st.error("❌ Не удалось сохранить данные.")
+        # Этот код уже ПОСЛЕ формы
+        if submitted:
+            # Формируем данные для сохранения
+            data_to_save = participant.copy()
+            
+            # Обновляем измененные поля
+            data_to_save['Дата заезда (новая)'] = str(new_check_in)
+            data_to_save['Дата отъезда (новая)'] = str(new_check_out)
+            data_to_save['Количество ночей'] = calculated_nights
+            data_to_save['Тариф проживания'] = new_tariff
+            data_to_save['Стоимость проживания'] = accommodation_cost
+            
+            if new_fee:
+                data_to_save['Оргвзнос (новый)'] = new_fee
+            
+            data_to_save['Дата и время регистрации'] = str(datetime.now())
+            data_to_save['Регистратор'] = 'Офлайн'
+            
+            # Сохраняем
+            if save_to_target_sheet(data_to_save):
+                st.success("✅ Данные успешно сохранены в офлайн-регистрацию!")
+                # Очищаем кеш после сохранения
+                st.cache_data.clear()
+            else:
+                st.error("❌ Не удалось сохранить данные.")
+
+def parse_date_safe(date_value):
+    """Безопасно парсит дату из разных форматов"""
+    if date_value is None or pd.isna(date_value):
+        return datetime.now().date()
+    
+    try:
+        # Если это уже datetime
+        if isinstance(date_value, (datetime, pd.Timestamp)):
+            return date_value.date()
+        
+        # Если это строка
+        if isinstance(date_value, str):
+            # Пробуем разные форматы
+            for fmt in ['%Y-%m-%d', '%d.%m.%Y', '%Y/%m/%d', '%d/%m/%Y']:
+                try:
+                    return datetime.strptime(date_value.strip(), fmt).date()
+                except:
+                    continue
+        
+        # Если ничего не подошло
+        return datetime.now().date()
+    except:
+        return datetime.now().date()
+
+
+check_in_value = parse_date_safe(participant.get(col, None))
