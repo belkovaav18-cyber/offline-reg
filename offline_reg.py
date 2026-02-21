@@ -55,6 +55,31 @@ except Exception as e:
     st.sidebar.error(f"❌ Не удалось открыть таблицу: {str(e)[:100]}...")
     st.stop()
 
+# --- Функция для безопасного парсинга дат ---
+def parse_date_safe(date_value):
+    """Безопасно парсит дату из разных форматов"""
+    if date_value is None or pd.isna(date_value):
+        return datetime.now().date()
+    
+    try:
+        # Если это уже datetime
+        if isinstance(date_value, (datetime, pd.Timestamp)):
+            return date_value.date()
+        
+        # Если это строка
+        if isinstance(date_value, str):
+            # Пробуем разные форматы
+            for fmt in ['%Y-%m-%d', '%d.%m.%Y', '%Y/%m/%d', '%d/%m/%Y']:
+                try:
+                    return datetime.strptime(date_value.strip(), fmt).date()
+                except:
+                    continue
+        
+        # Если ничего не подошло
+        return datetime.now().date()
+    except:
+        return datetime.now().date()
+
 # --- Функции для работы с данными ---
 @st.cache_data(ttl=10)
 def load_source_data():
@@ -121,6 +146,18 @@ def calculate_accommodation_cost(nights, tariff):
     except (ValueError, TypeError):
         return 0
 
+def get_full_name(row, df):
+    """Собирает ФИО из колонок фамилия, имя, отчество"""
+    parts = []
+    for name_part in ['фамилия', 'имя', 'отчество']:
+        for col in df.columns:
+            if col.lower() == name_part:
+                value = row.get(col, '')
+                if pd.notna(value):
+                    parts.append(str(value))
+                break
+    return ' '.join(parts).strip()
+
 # --- Интерфейс приложения ---
 st.set_page_config(layout="wide")
 st.title("🏨 Офлайн-регистрация на конференцию")
@@ -143,7 +180,7 @@ with col1:
     search_surname = st.text_input("🔍 Введите фамилию участника:")
 
 if search_surname:
-    # Проверяем, есть ли колонка 'фамилия' (с маленькой буквы)
+    # Проверяем, есть ли колонка 'фамилия'
     surname_column = None
     possible_names = ['фамилия', 'Фамилия', 'ФАМИЛИЯ']
     
@@ -158,7 +195,7 @@ if search_surname:
     
     # Фильтруем по фамилии
     mask = df[surname_column].str.contains(search_surname, case=False, na=False)
-    filtered_df = df[mask]
+    filtered_df = df[mask].copy()
 
     if filtered_df.empty:
         st.warning(f"Участники с фамилией '{search_surname}' не найдены.")
@@ -167,116 +204,60 @@ if search_surname:
         st.info(f"Найдено несколько участников. Уточните выбор:")
         
         # Создаем ФИО для отображения
-        def get_full_name(row):
-            parts = []
-            for name_part in ['фамилия', 'имя', 'отчество']:
-                for col in df.columns:
-                    if col.lower() == name_part:
-                        parts.append(str(row[col]) if pd.notna(row[col]) else '')
-                        break
-            return ' '.join(parts).strip()
-        
-        filtered_df['display_name'] = filtered_df.apply(get_full_name, axis=1)
+        filtered_df['display_name'] = filtered_df.apply(lambda row: get_full_name(row, df), axis=1)
         
         selected_name = st.selectbox("Выберите участника:", filtered_df['display_name'].tolist())
         participant = filtered_df[filtered_df['display_name'] == selected_name].iloc[0].to_dict()
+        full_name = selected_name
     else:
         # Найден ровно один участник
         participant = filtered_df.iloc[0].to_dict()
-        # Создаем ФИО для отображения
-        name_parts = []
-        for name_part in ['фамилия', 'имя', 'отчество']:
-            for col in df.columns:
-                if col.lower() == name_part:
-                    name_parts.append(str(participant[col]) if pd.notna(participant[col]) else '')
-                    break
-        full_name = ' '.join(name_parts).strip()
+        full_name = get_full_name(participant, df)
+    
     # 3. Отображаем и редактируем данные участника
     if 'participant' in locals():
-        # Формируем ФИО для отображения
-        name_parts = []
-        for name_part in ['фамилия', 'имя', 'отчество']:
-            for col in df.columns:
-                if col.lower() == name_part:
-                    name_parts.append(str(participant[col]) if pd.notna(participant[col]) else '')
-                    break
-        full_name = ' '.join(name_parts).strip()
-        
         st.divider()
         st.subheader(f"Данные участника: {full_name}")
 
-                with st.form(key='edit_form'):
+        # Ищем нужные колонки
+        birth_col = None
+        fee_col = None
+        checkin_col = None
+        checkout_col = None
+        tariff_col = None
+        
+        for col in df.columns:
+            col_lower = col.lower()
+            if 'рожден' in col_lower or ('дата' in col_lower and 'рож' in col_lower):
+                birth_col = col
+            elif 'оргвзнос' in col_lower or 'взнос' in col_lower:
+                fee_col = col
+            elif 'заезд' in col_lower or 'приезд' in col_lower:
+                checkin_col = col
+            elif 'отъезд' in col_lower or 'выезд' in col_lower:
+                checkout_col = col
+            elif 'тариф' in col_lower or 'стоимость' in col_lower:
+                tariff_col = col
+        
+        with st.form(key='edit_form'):
             # Разбиваем на колонки
             col_a, col_b, col_c = st.columns(3)
             
             with col_a:
                 st.text_input("ФИО", value=full_name, disabled=True)
                 
-                # Ищем дату рождения
-                birth_date = ''
-                for col in df.columns:
-                    if 'рожден' in col.lower() or 'birth' in col.lower() or ('дата' in col.lower() and 'рож' in col.lower()):
-                        birth_date = participant.get(col, '')
-                        break
+                # Дата рождения
+                birth_date = participant.get(birth_col, '') if birth_col else ''
                 st.text_input("Дата рождения", value=str(birth_date), disabled=True)
                 
-                # Ищем оргвзнос
-                fee = ''
-                for col in df.columns:
-                    if 'оргвзнос' in col.lower() or 'взнос' in col.lower() or 'fee' in col.lower():
-                        fee = participant.get(col, '')
-                        break
+                # Оргвзнос
+                fee = participant.get(fee_col, '') if fee_col else ''
                 st.text_input("Оргвзнос (текущий)", value=str(fee), disabled=True)
 
             with col_b:
-                # Редактируемые поля - даты
-                check_in_value = None
-                check_out_value = None
-                
-                # Ищем колонки с датами
-                for col in df.columns:
-                    if 'заезд' in col.lower() or 'приезд' in col.lower() or 'check-in' in col.lower():
-                        date_val = participant.get(col, None)
-                        if date_val and pd.notna(date_val):
-                            try:
-                                # Пробуем разные форматы дат
-                                if isinstance(date_val, str):
-                                    # Пробуем разные форматы строк
-                                    for fmt in ['%Y-%m-%d', '%d.%m.%Y', '%Y/%m/%d', '%d/%m/%Y']:
-                                        try:
-                                            check_in_value = datetime.strptime(date_val, fmt).date()
-                                            break
-                                        except:
-                                            continue
-                                else:
-                                    # Если это уже datetime объект
-                                    check_in_value = pd.to_datetime(date_val).date()
-                            except:
-                                check_in_value = datetime.now().date()
-                        break
-                    
-                    if 'отъезд' in col.lower() or 'выезд' in col.lower() or 'check-out' in col.lower() or 'от\'езд' in col.lower():
-                        date_val = participant.get(col, None)
-                        if date_val and pd.notna(date_val):
-                            try:
-                                if isinstance(date_val, str):
-                                    for fmt in ['%Y-%m-%d', '%d.%m.%Y', '%Y/%m/%d', '%d/%m/%Y']:
-                                        try:
-                                            check_out_value = datetime.strptime(date_val, fmt).date()
-                                            break
-                                        except:
-                                            continue
-                                else:
-                                    check_out_value = pd.to_datetime(date_val).date()
-                            except:
-                                check_out_value = datetime.now().date()
-                        break
-                
-                # Если не нашли, используем текущую дату
-                if check_in_value is None:
-                    check_in_value = datetime.now().date()
-                if check_out_value is None:
-                    check_out_value = datetime.now().date()
+                # Даты заезда/отъезда
+                check_in_value = parse_date_safe(participant.get(checkin_col, None)) if checkin_col else datetime.now().date()
+                check_out_value = parse_date_safe(participant.get(checkout_col, None)) if checkout_col else datetime.now().date()
                 
                 new_check_in = st.date_input("Дата заезда", value=check_in_value)
                 new_check_out = st.date_input("Дата отъезда", value=check_out_value)
@@ -290,17 +271,11 @@ if search_surname:
                 nights = st.number_input("Количество ночей", value=calculated_nights, disabled=True)
 
             with col_c:
-                # Ищем тариф
-                tariff_value = 0
-                for col in df.columns:
-                    if 'тариф' in col.lower() or 'стоимость' in col.lower() or 'tariff' in col.lower():
-                        try:
-                            val = participant.get(col, 0)
-                            if val and pd.notna(val):
-                                tariff_value = float(val)
-                        except:
-                            tariff_value = 0
-                        break
+                # Тариф
+                try:
+                    tariff_value = float(participant.get(tariff_col, 0)) if tariff_col else 0
+                except:
+                    tariff_value = 0
                 
                 new_tariff = st.number_input("Тариф проживания (₽/ночь)", value=float(tariff_value))
                 
@@ -311,10 +286,10 @@ if search_surname:
                 accommodation_cost = calculate_accommodation_cost(calculated_nights, new_tariff)
                 st.metric("Стоимость проживания", f"{accommodation_cost} ₽")
 
-            # Кнопка сохранения - ОБЯЗАТЕЛЬНО внутри формы!
+            # Кнопка сохранения
             submitted = st.form_submit_button("✅ Сохранить изменения в офлайн-регистрацию")
-
-        # Этот код уже ПОСЛЕ формы
+        
+        # Обработка сохранения (вне формы)
         if submitted:
             # Формируем данные для сохранения
             data_to_save = participant.copy()
@@ -337,32 +312,6 @@ if search_surname:
                 st.success("✅ Данные успешно сохранены в офлайн-регистрацию!")
                 # Очищаем кеш после сохранения
                 st.cache_data.clear()
+                st.balloons()  # Праздничный эффект :)
             else:
                 st.error("❌ Не удалось сохранить данные.")
-
-def parse_date_safe(date_value):
-    """Безопасно парсит дату из разных форматов"""
-    if date_value is None or pd.isna(date_value):
-        return datetime.now().date()
-    
-    try:
-        # Если это уже datetime
-        if isinstance(date_value, (datetime, pd.Timestamp)):
-            return date_value.date()
-        
-        # Если это строка
-        if isinstance(date_value, str):
-            # Пробуем разные форматы
-            for fmt in ['%Y-%m-%d', '%d.%m.%Y', '%Y/%m/%d', '%d/%m/%Y']:
-                try:
-                    return datetime.strptime(date_value.strip(), fmt).date()
-                except:
-                    continue
-        
-        # Если ничего не подошло
-        return datetime.now().date()
-    except:
-        return datetime.now().date()
-
-
-check_in_value = parse_date_safe(participant.get(col, None))
