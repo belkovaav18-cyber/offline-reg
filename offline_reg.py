@@ -6,7 +6,7 @@ from datetime import datetime
 import json
 
 # --- Конфигурация ---
-SPREADSHEET_ID = 'YOUR_GOOGLE_SHEET_ID_HERE'  # ЗАМЕНИТЕ НА ВАШ ID
+SPREADSHEET_ID = '10cBNkDQ3fOCajBIjeAsaCPsivEfVShGZ-BHmLcC6l5s/edit'  # ЗАМЕНИТЕ НА ВАШ ID
 
 # Названия листов
 SOURCE_SHEET_NAME = 'ЯндексФорм'
@@ -195,4 +195,5 @@ if search_surname:
                     # st.cache_data.clear()
                 else:
                     st.error("Не удалось сохранить данные.")
+
 
