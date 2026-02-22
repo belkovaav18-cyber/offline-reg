@@ -5,10 +5,6 @@ import pandas as pd
 from datetime import datetime
 import os
 import base64
-import numpy as np
-import matplotlib.pyplot as plt
-from matplotlib.animation import FuncAnimation
-import io
 import streamlit.components.v1 as components
 
 # --- Конфигурация ---
@@ -24,47 +20,50 @@ def set_background(image_file):
     """
     Устанавливает фоновое изображение для приложения
     """
-    with open(image_file, "rb") as f:
-        img_data = f.read()
-    b64_encoded = base64.b64encode(img_data).decode()
-    style = f"""
-        <style>
-        .stApp {{
-            background-image: url(data:image/png;base64,{b64_encoded});
-            background-size: cover;
-            background-repeat: no-repeat;
-            background-attachment: fixed;
-            background-position: center;
-        }}
-        /* Делаем контент читаемым на фоне */
-        .stApp > header {{
-            background-color: rgba(255, 255, 255, 0.9) !important;
-            backdrop-filter: blur(5px);
-        }}
-        .stApp .main .block-container {{
-            background-color: rgba(255, 255, 255, 0.85);
-            border-radius: 20px;
-            padding: 2rem;
-            backdrop-filter: blur(10px);
-            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
-            margin-top: 1rem;
-            margin-bottom: 1rem;
-        }}
-        /* Стили для сайдбара */
-        .css-1d391kg, .css-12oz5g7 {{
-            background-color: rgba(248, 249, 249, 0.95) !important;
-            backdrop-filter: blur(10px);
-        }}
-        </style>
-    """
-    st.markdown(style, unsafe_allow_html=True)
+    try:
+        with open(image_file, "rb") as f:
+            img_data = f.read()
+        b64_encoded = base64.b64encode(img_data).decode()
+        style = f"""
+            <style>
+            .stApp {{
+                background-image: url(data:image/png;base64,{b64_encoded});
+                background-size: cover;
+                background-repeat: no-repeat;
+                background-attachment: fixed;
+                background-position: center;
+            }}
+            /* Делаем контент читаемым на фоне */
+            .stApp > header {{
+                background-color: rgba(255, 255, 255, 0.9) !important;
+                backdrop-filter: blur(5px);
+            }}
+            .stApp .main .block-container {{
+                background-color: rgba(255, 255, 255, 0.85);
+                border-radius: 20px;
+                padding: 2rem;
+                backdrop-filter: blur(10px);
+                box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+                margin-top: 1rem;
+                margin-bottom: 1rem;
+            }}
+            /* Стили для сайдбара */
+            .css-1d391kg, .css-12oz5g7 {{
+                background-color: rgba(248, 249, 249, 0.95) !important;
+                backdrop-filter: blur(10px);
+            }}
+            </style>
+        """
+        st.markdown(style, unsafe_allow_html=True)
+        return True
+    except Exception as e:
+        return False
 
-# --- ФУНКЦИЯ ДЛЯ СОЗДАНИЯ АНИМАЦИИ ВОЛН ---
+# --- ФУНКЦИЯ ДЛЯ СОЗДАНИЯ АНИМАЦИИ ВОЛН (БЕЗ MATPLOTLIB) ---
 def create_wave_animation():
     """
-    Создает анимацию морских волн
+    Создает анимацию морских волн с помощью CSS и HTML
     """
-    # Создаем анимацию с помощью HTML и JS
     wave_html = """
     <!DOCTYPE html>
     <html>
@@ -76,86 +75,147 @@ def create_wave_animation():
                 background: transparent;
                 overflow: hidden;
             }
-            canvas {
-                display: block;
-                width: 100%;
+            
+            .ocean {
                 height: 150px;
+                width: 100%;
+                position: relative;
+                bottom: 0;
+                left: 0;
                 background: transparent;
+            }
+            
+            .wave {
+                background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 88.7"><path d="M800 56.9c-12.9 0-25.8-3.9-36.7-11.8-21.8-15.8-51.5-15.8-73.2 0-21.8 15.8-51.5 15.8-73.2 0s-51.5-15.8-73.2 0c-21.8 15.8-51.5 15.8-73.2 0-10.9-7.9-23.8-11.8-36.7-11.8s-25.8 3.9-36.7 11.8c-21.8 15.8-51.5 15.8-73.2 0-21.8-15.8-51.5-15.8-73.2 0-10.9 7.9-23.8 11.8-36.7 11.8v31.8h800V56.9z" fill="%23469ddb" opacity="0.5"/><path d="M800 40.9c-12.9 0-25.8-3.9-36.7-11.8-21.8-15.8-51.5-15.8-73.2 0-21.8 15.8-51.5 15.8-73.2 0s-51.5-15.8-73.2 0c-21.8 15.8-51.5 15.8-73.2 0-10.9-7.9-23.8-11.8-36.7-11.8s-25.8 3.9-36.7 11.8c-21.8 15.8-51.5 15.8-73.2 0-21.8-15.8-51.5-15.8-73.2 0-10.9 7.9-23.8 11.8-36.7 11.8v31.8h800V40.9z" fill="%233d8bba" opacity="0.7"/><path d="M800 24.9c-12.9 0-25.8-3.9-36.7-11.8-21.8-15.8-51.5-15.8-73.2 0-21.8 15.8-51.5 15.8-73.2 0s-51.5-15.8-73.2 0c-21.8 15.8-51.5 15.8-73.2 0-10.9-7.9-23.8-11.8-36.7-11.8s-25.8 3.9-36.7 11.8c-21.8 15.8-51.5 15.8-73.2 0-21.8-15.8-51.5-15.8-73.2 0-10.9 7.9-23.8 11.8-36.7 11.8v31.8h800V24.9z" fill="%233078b0" opacity="0.9"/></svg>') repeat-x;
+                position: absolute;
+                top: -198px;
+                width: 6400px;
+                height: 198px;
+                animation: wave 7s cubic-bezier(0.36, 0.45, 0.63, 0.53) infinite;
+                transform: translate3d(0, 0, 0);
+            }
+            
+            .wave:nth-of-type(2) {
+                top: -175px;
+                animation: wave 7s cubic-bezier(0.36, 0.45, 0.63, 0.53) -.125s infinite, swell 7s ease -1.25s infinite;
+                opacity: 1;
+            }
+            
+            @keyframes wave {
+                0% {
+                    margin-left: 0;
+                }
+                100% {
+                    margin-left: -1600px;
+                }
+            }
+            
+            @keyframes swell {
+                0%, 100% {
+                    transform: translate3d(0, -25px, 0);
+                }
+                50% {
+                    transform: translate3d(0, 5px, 0);
+                }
             }
         </style>
     </head>
     <body>
-        <canvas id="waveCanvas"></canvas>
-        <script>
-            const canvas = document.getElementById('waveCanvas');
-            const ctx = canvas.getContext('2d');
-            
-            // Устанавливаем размер canvas
-            function resizeCanvas() {
-                canvas.width = window.innerWidth;
-                canvas.height = 150;
-            }
-            resizeCanvas();
-            window.addEventListener('resize', resizeCanvas);
-            
-            // Параметры волн
-            const waves = [
-                { amplitude: 20, frequency: 0.02, speed: 0.02, color: 'rgba(64, 164, 223, 0.3)', offset: 0 },
-                { amplitude: 15, frequency: 0.03, speed: 0.03, color: 'rgba(45, 140, 200, 0.4)', offset: Math.PI },
-                { amplitude: 10, frequency: 0.04, speed: 0.04, color: 'rgba(135, 206, 235, 0.5)', offset: Math.PI/2 },
-                { amplitude: 8, frequency: 0.05, speed: 0.05, color: 'rgba(173, 216, 230, 0.6)', offset: Math.PI*1.5 }
-            ];
-            
-            let time = 0;
-            
-            function drawWaves() {
-                ctx.clearRect(0, 0, canvas.width, canvas.height);
-                
-                waves.forEach(wave => {
-                    ctx.beginPath();
-                    ctx.moveTo(0, canvas.height/2);
-                    
-                    for (let x = 0; x < canvas.width; x += 5) {
-                        const y = canvas.height/2 + 
-                                 wave.amplitude * Math.sin(x * wave.frequency + time * wave.speed + wave.offset) + 
-                                 wave.amplitude/2 * Math.cos(x * wave.frequency * 0.5 + time * 0.01);
-                        
-                        if (x === 0) {
-                            ctx.moveTo(x, y);
-                        } else {
-                            ctx.lineTo(x, y);
-                        }
-                    }
-                    
-                    // Добавляем вторую волну для создания пены
-                    ctx.lineTo(canvas.width, canvas.height);
-                    ctx.lineTo(0, canvas.height);
-                    ctx.closePath();
-                    
-                    ctx.fillStyle = wave.color;
-                    ctx.fill();
-                });
-                
-                // Добавляем блики
-                ctx.beginPath();
-                for (let x = 0; x < canvas.width; x += 20) {
-                    const y = canvas.height/2 - 5 + 
-                             5 * Math.sin(x * 0.03 + time * 0.05);
-                    ctx.arc(x, y, 2, 0, Math.PI * 2);
-                }
-                ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
-                ctx.fill();
-                
-                time += 0.1;
-                requestAnimationFrame(drawWaves);
-            }
-            
-            drawWaves();
-        </script>
+        <div class="ocean">
+            <div class="wave"></div>
+            <div class="wave"></div>
+        </div>
     </body>
     </html>
     """
     return wave_html
+
+# --- ФУНКЦИЯ ДЛЯ СОЗДАНИЯ ПРАЗДНИЧНЫХ ВОЛН ПРИ УСПЕХЕ ---
+def create_success_waves():
+    """
+    Создает анимацию волн при успешном сохранении
+    """
+    success_waves = """
+    <style>
+    @keyflow wave-rise {
+        0% {
+            transform: translateY(100px);
+            opacity: 0;
+        }
+        100% {
+            transform: translateY(0);
+            opacity: 1;
+        }
+    }
+    
+    .success-ocean {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        width: 100%;
+        height: 150px;
+        background: linear-gradient(180deg, rgba(64, 164, 223, 0) 0%, rgba(64, 164, 223, 0.3) 100%);
+        animation: wave-rise 2s ease-out;
+        pointer-events: none;
+        z-index: 9999;
+    }
+    
+    .success-wave {
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        width: 200%;
+        height: 100%;
+        background: repeating-linear-gradient(
+            transparent,
+            transparent 20px,
+            rgba(255, 255, 255, 0.3) 20px,
+            rgba(255, 255, 255, 0.3) 40px
+        );
+        animation: wave-move 3s linear infinite;
+    }
+    
+    @keyframes wave-move {
+        0% {
+            transform: translateX(0);
+        }
+        100% {
+            transform: translateX(-50%);
+        }
+    }
+    
+    .particle {
+        position: absolute;
+        width: 10px;
+        height: 10px;
+        background: rgba(255, 255, 255, 0.6);
+        border-radius: 50%;
+        bottom: 20px;
+        animation: particle-rise 2s ease-out infinite;
+    }
+    
+    @keyframes particle-rise {
+        0% {
+            transform: translateY(0) scale(1);
+            opacity: 1;
+        }
+        100% {
+            transform: translateY(-100px) scale(0);
+            opacity: 0;
+        }
+    }
+    </style>
+    
+    <div class="success-ocean">
+        <div class="success-wave"></div>
+        <div class="particle" style="left: 10%; animation-delay: 0s;"></div>
+        <div class="particle" style="left: 30%; animation-delay: 0.5s;"></div>
+        <div class="particle" style="left: 50%; animation-delay: 1s;"></div>
+        <div class="particle" style="left: 70%; animation-delay: 0.2s;"></div>
+        <div class="particle" style="left: 90%; animation-delay: 0.7s;"></div>
+    </div>
+    """
+    return success_waves
 
 # --- АУТЕНТИФИКАЦИЯ ---
 try:
@@ -596,3 +656,4 @@ if search_surname:
                 st.cache_data.clear()
             else:
                 st.error("❌ Произошли ошибки при сохранении. Проверьте логи выше.")
+
