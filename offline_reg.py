@@ -48,6 +48,27 @@ except Exception as e:
     st.sidebar.error(f"❌ Не удалось открыть таблицу: {str(e)[:100]}...")
     st.stop()
 
+# --- Функция для безопасного парсинга дат ---
+def parse_date_safe(date_value):
+    """Безопасно парсит дату из разных форматов"""
+    if date_value is None or pd.isna(date_value):
+        return datetime.now().date()
+    
+    try:
+        if isinstance(date_value, (datetime, pd.Timestamp)):
+            return date_value.date()
+        
+        if isinstance(date_value, str):
+            for fmt in ['%Y-%m-%d', '%d.%m.%Y', '%Y/%m/%d', '%d/%m/%Y']:
+                try:
+                    return datetime.strptime(date_value.strip(), fmt).date()
+                except:
+                    continue
+        
+        return datetime.now().date()
+    except:
+        return datetime.now().date()
+
 # --- Функция для извлечения фамилии из ФИО ---
 def extract_surname(full_name):
     """Извлекает фамилию из полного ФИО"""
@@ -204,9 +225,13 @@ if search_surname:
                     current_room = participant.get('room_id', '')
                     new_room = st.text_input("Номер комнаты", value=str(current_room))
                     
-                    # Оргвзнос (можно отредактировать)
+                    # Оргвзнос (можно отредактировать) - ИСПРАВЛЕНО: приводим к float
                     current_fee = participant.get('оргвзнос', 0)
-                    new_fee = st.number_input("Оргвзнос (₽)", value=float(current_fee) if current_fee else 0, step=100)
+                    try:
+                        current_fee = float(current_fee) if current_fee else 0.0
+                    except:
+                        current_fee = 0.0
+                    new_fee = st.number_input("Оргвзнос (₽)", value=current_fee, step=100.0, format="%.0f")
                 
                 with col2:
                     # Даты
@@ -216,9 +241,13 @@ if search_surname:
                     new_check_in = st.date_input("📅 Дата заезда", value=check_in_value)
                     new_check_out = st.date_input("📅 Дата отъезда", value=check_out_value)
                     
-                    # Тариф
+                    # Тариф - ИСПРАВЛЕНО: приводим к float
                     current_tariff = participant.get('тариф', 0)
-                    new_tariff = st.number_input("💰 Тариф (₽/ночь)", value=float(current_tariff) if current_tariff else 0, step=500)
+                    try:
+                        current_tariff = float(current_tariff) if current_tariff else 0.0
+                    except:
+                        current_tariff = 0.0
+                    new_tariff = st.number_input("💰 Тариф (₽/ночь)", value=current_tariff, step=500.0, format="%.0f")
                 
                 # Расчет стоимости
                 nights, cost = calculate_cost(new_check_in, new_check_out, new_tariff)
