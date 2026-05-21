@@ -10,6 +10,7 @@ SPREADSHEET_ID = '10cBNkDQ3fOCajBIjeAsaCPsivEfVShGZ-BHmLcC6l5s'
 # Названия листов
 SOURCE_SHEET_NAME = 'Лист1'
 TARGET_SHEET_NAME_PREFIX = 'Офлайн регистрация'
+ACCOUNTING_SHEET_PREFIX = 'Бухгалтерия'
 
 # --- АУТЕНТИФИКАЦИЯ ---
 try:
@@ -125,42 +126,103 @@ def load_source_data():
         st.sidebar.error(f"❌ Ошибка загрузки данных: {e}")
         return pd.DataFrame()
 
-def save_to_target_sheet(participant_data):
-    """Сохраняет данные участника в целевой лист."""
+def save_to_target_sheets(participant_data, full_name):
+    """Сохраняет данные участника в целевые листы (основной и бухгалтерский)."""
     today_str = datetime.now().strftime("%Y-%m-%d")
-    sheet_name = f"{TARGET_SHEET_NAME_PREFIX} {today_str}"
     
-    try:
-        # Открываем или создаем лист
-        try:
-            worksheet = sh.worksheet(sheet_name)
-        except gspread.WorksheetNotFound:
-            worksheet = sh.add_worksheet(title=sheet_name, rows=100, cols=20)
-            # Заголовки: только нужные поля
-            headers = ['Дата регистрации', 'ФИО', 'Комната', 'Дата заезда', 'Дата отъезда', 
-                      'Количество ночей', 'Тариф (₽/ночь)', 'Стоимость (₽)', 'Оргвзнос']
-            worksheet.append_row(headers)
-            st.info(f"📋 Создан новый лист: {sheet_name}")
+    registration_sheet_name = f"{TARGET_SHEET_NAME_PREFIX} {today_str}"
+    accounting_sheet_name = f"{ACCOUNTING_SHEET_PREFIX} {today_str}"
+    
+    success = True
+    registration_success = False
+    accounting_success = False
 
-        # Добавляем данные
-        row_data = [
-            datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            participant_data['ФИО'],
-            participant_data['Комната'],
-            str(participant_data['Дата заезда']),
-            str(participant_data['Дата отъезда']),
-            participant_data['Количество ночей'],
-            participant_data['Тариф'],
-            participant_data['Стоимость'],
-            participant_data['Оргвзнос']
-        ]
+    try:
+        # --- СОХРАНЕНИЕ В ОСНОВНОЙ ЛИСТ РЕГИСТРАЦИИ ---
+        try:
+            try:
+                registration_worksheet = sh.worksheet(registration_sheet_name)
+            except gspread.WorksheetNotFound:
+                registration_worksheet = sh.add_worksheet(title=registration_sheet_name, rows=100, cols=20)
+                headers = ['Дата регистрации', 'ФИО', 'Комната', 'Дата заезда', 'Дата отъезда', 
+                          'Количество ночей', 'Тариф (₽/ночь)', 'Стоимость (₽)', 'Оргвзнос']
+                registration_worksheet.append_row(headers)
+                st.info(f"📋 Создан новый лист регистрации: {registration_sheet_name}")
+
+            row_data = [
+                datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                participant_data['ФИО'],
+                participant_data['Комната'],
+                str(participant_data['Дата заезда']),
+                str(participant_data['Дата отъезда']),
+                participant_data['Количество ночей'],
+                participant_data['Тариф'],
+                participant_data['Стоимость'],
+                participant_data['Оргвзнос']
+            ]
+            
+            registration_worksheet.append_row(row_data)
+            st.success(f"✅ Данные сохранены в лист регистрации '{registration_sheet_name}'")
+            registration_success = True
+            
+        except Exception as e:
+            st.error(f"❌ Ошибка сохранения в лист регистрации: {e}")
+            success = False
+
+        # --- СОХРАНЕНИЕ В БУХГАЛТЕРСКИЙ ЛИСТ ---
+        try:
+            try:
+                accounting_worksheet = sh.worksheet(accounting_sheet_name)
+            except gspread.WorksheetNotFound:
+                accounting_worksheet = sh.add_worksheet(title=accounting_sheet_name, rows=100, cols=20)
+                accounting_headers = [
+                    'Дата регистрации',
+                    'ФИО',
+                    'Фамилия',
+                    'Дата заезда',
+                    'Дата отъезда',
+                    'Количество ночей',
+                    'Тариф (₽/ночь)',
+                    'Стоимость проживания (₽)',
+                    'Оргвзнос'
+                ]
+                accounting_worksheet.append_row(accounting_headers)
+                st.info(f"📊 Создан новый бухгалтерский лист: '{accounting_sheet_name}'")
+
+            # Извлекаем фамилию для бухгалтерии
+            surname = extract_surname(full_name)
+            
+            accounting_data = [
+                datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                full_name,
+                surname,
+                str(participant_data['Дата заезда']),
+                str(participant_data['Дата отъезда']),
+                participant_data['Количество ночей'],
+                participant_data['Тариф'],
+                participant_data['Стоимость'],
+                participant_data['Оргвзнос']
+            ]
+            
+            accounting_worksheet.append_row(accounting_data)
+            st.success(f"✅ Данные сохранены в бухгалтерский лист '{accounting_sheet_name}'")
+            accounting_success = True
+            
+        except Exception as e:
+            st.error(f"❌ Ошибка сохранения в бухгалтерский лист: {e}")
+            success = False
+
+        if registration_success and accounting_success:
+            st.success("🎉 Данные успешно сохранены в оба листа!")
+        elif registration_success:
+            st.warning("⚠️ Данные сохранены только в лист регистрации")
+        elif accounting_success:
+            st.warning("⚠️ Данные сохранены только в бухгалтерский лист")
         
-        worksheet.append_row(row_data)
-        st.success(f"✅ Данные сохранены в лист '{sheet_name}'")
-        return True
+        return success
         
     except Exception as e:
-        st.error(f"❌ Ошибка сохранения: {e}")
+        st.error(f"❌ Критическая ошибка сохранения: {e}")
         return False
 
 def calculate_cost(check_in, check_out, tariff):
@@ -188,6 +250,22 @@ if df.empty:
     st.warning("Исходная таблица пуста или не удалось загрузить данные.")
     st.stop()
 
+# Инициализация session state для хранения текущих значений
+if 'selected_fio' not in st.session_state:
+    st.session_state.selected_fio = None
+if 'new_room' not in st.session_state:
+    st.session_state.new_room = ""
+if 'new_check_in' not in st.session_state:
+    st.session_state.new_check_in = datetime.now().date()
+if 'new_check_out' not in st.session_state:
+    st.session_state.new_check_out = datetime.now().date()
+if 'new_tariff' not in st.session_state:
+    st.session_state.new_tariff = 0.0
+if 'new_fee' not in st.session_state:
+    st.session_state.new_fee = 0.0
+if 'participant' not in st.session_state:
+    st.session_state.participant = None
+
 # Поиск по фамилии
 search_surname = st.text_input("🔍 Введите фамилию участника:", placeholder="Например: Иванов")
 
@@ -207,82 +285,114 @@ if search_surname:
             key="participant_select"
         )
         
-        if selected_fio:
+        # Если выбран новый участник, обновляем session state
+        if selected_fio != st.session_state.selected_fio:
+            st.session_state.selected_fio = selected_fio
             participant = df[df['ФИО'] == selected_fio].iloc[0].to_dict()
+            st.session_state.participant = participant
+            
+            # Загружаем текущие значения
+            st.session_state.new_room = str(participant.get('room_id', ''))
+            
+            check_in_value = parse_date_safe(participant.get('Дата заезда', None))
+            check_out_value = parse_date_safe(participant.get('Дата отъезда', None))
+            st.session_state.new_check_in = check_in_value
+            st.session_state.new_check_out = check_out_value
+            
+            try:
+                st.session_state.new_tariff = float(participant.get('тариф', 0)) if participant.get('тариф', 0) else 0.0
+            except:
+                st.session_state.new_tariff = 0.0
+                
+            try:
+                st.session_state.new_fee = float(participant.get('оргвзнос', 0)) if participant.get('оргвзнос', 0) else 0.0
+            except:
+                st.session_state.new_fee = 0.0
+        
+        if st.session_state.participant is not None:
+            st.divider()
+            st.subheader(f"📝 Редактирование данных: {st.session_state.selected_fio}")
+            
+            # Расчет стоимости при каждом изменении
+            nights, cost = calculate_cost(
+                st.session_state.new_check_in, 
+                st.session_state.new_check_out, 
+                st.session_state.new_tariff
+            )
+            
+            # Форма редактирования с авто-обновлением
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                # ФИО (только для информации)
+                st.text_input("ФИО", value=st.session_state.selected_fio, disabled=True)
+                
+                # Комната (редактируемая)
+                st.session_state.new_room = st.text_input(
+                    "Номер комнаты", 
+                    value=st.session_state.new_room,
+                    key="room_input"
+                )
+                
+                # Оргвзнос (редактируемый)
+                st.session_state.new_fee = st.number_input(
+                    "Оргвзнос (₽)", 
+                    value=st.session_state.new_fee, 
+                    step=100.0, 
+                    format="%.0f",
+                    key="fee_input"
+                )
+            
+            with col2:
+                # Даты
+                st.session_state.new_check_in = st.date_input(
+                    "📅 Дата заезда", 
+                    value=st.session_state.new_check_in,
+                    key="check_in_input"
+                )
+                
+                st.session_state.new_check_out = st.date_input(
+                    "📅 Дата отъезда", 
+                    value=st.session_state.new_check_out,
+                    key="check_out_input"
+                )
+                
+                # Тариф
+                st.session_state.new_tariff = st.number_input(
+                    "💰 Тариф (₽/ночь)", 
+                    value=st.session_state.new_tariff, 
+                    step=500.0, 
+                    format="%.0f",
+                    key="tariff_input"
+                )
+            
+            # Отображение рассчитанных значений (авто-обновляются)
+            col3, col4 = st.columns(2)
+            with col3:
+                st.metric("Количество ночей", f"{nights}")
+            with col4:
+                st.metric("💰 Итого к оплате", f"{cost:,.0f} ₽")
             
             st.divider()
-            st.subheader(f"📝 Редактирование данных: {selected_fio}")
             
-            # Форма редактирования
-            with st.form(key='edit_form'):
-                col1, col2 = st.columns(2)
-                
-                with col1:
-                    # ФИО (только для информации)
-                    st.text_input("ФИО", value=selected_fio, disabled=True)
-                    
-                    # Комната (редактируемая)
-                    current_room = participant.get('room_id', '')
-                    new_room = st.text_input("Номер комнаты", value=str(current_room))
-                    
-                    # Оргвзнос (можно отредактировать) - ИСПРАВЛЕНО: приводим к float
-                    current_fee = participant.get('оргвзнос', 0)
-                    try:
-                        current_fee = float(current_fee) if current_fee else 0.0
-                    except:
-                        current_fee = 0.0
-                    new_fee = st.number_input("Оргвзнос (₽)", value=current_fee, step=100.0, format="%.0f")
-                
-                with col2:
-                    # Даты
-                    check_in_value = parse_date_safe(participant.get('Дата заезда', None))
-                    check_out_value = parse_date_safe(participant.get('Дата отъезда', None))
-                    
-                    new_check_in = st.date_input("📅 Дата заезда", value=check_in_value)
-                    new_check_out = st.date_input("📅 Дата отъезда", value=check_out_value)
-                    
-                    # Тариф - ИСПРАВЛЕНО: приводим к float
-                    current_tariff = participant.get('тариф', 0)
-                    try:
-                        current_tariff = float(current_tariff) if current_tariff else 0.0
-                    except:
-                        current_tariff = 0.0
-                    new_tariff = st.number_input("💰 Тариф (₽/ночь)", value=current_tariff, step=500.0, format="%.0f")
-                
-                # Расчет стоимости
-                nights, cost = calculate_cost(new_check_in, new_check_out, new_tariff)
-                
-                # Отображение рассчитанных значений
-                col3, col4 = st.columns(2)
-                with col3:
-                    st.metric("Количество ночей", f"{nights}")
-                with col4:
-                    st.metric("💰 Итого к оплате", f"{cost:,.0f} ₽")
-                
-                st.divider()
-                
-                # Кнопка сохранения
-                submitted = st.form_submit_button("✅ Сохранить изменения", type="primary", use_container_width=True)
-            
-            # Обработка сохранения
-            if submitted:
+            # Кнопка сохранения
+            if st.button("✅ Сохранить изменения", type="primary", use_container_width=True):
                 # Формируем данные для сохранения
                 data_to_save = {
-                    'ФИО': selected_fio,
-                    'Комната': new_room,
-                    'Дата заезда': new_check_in.strftime("%d.%m.%Y"),
-                    'Дата отъезда': new_check_out.strftime("%d.%m.%Y"),
+                    'ФИО': st.session_state.selected_fio,
+                    'Комната': st.session_state.new_room,
+                    'Дата заезда': st.session_state.new_check_in.strftime("%d.%m.%Y"),
+                    'Дата отъезда': st.session_state.new_check_out.strftime("%d.%m.%Y"),
                     'Количество ночей': nights,
-                    'Тариф': new_tariff,
+                    'Тариф': st.session_state.new_tariff,
                     'Стоимость': cost,
-                    'Оргвзнос': new_fee
+                    'Оргвзнос': st.session_state.new_fee
                 }
                 
-                # Сохраняем
-                if save_to_target_sheet(data_to_save):
+                # Сохраняем в оба листа
+                if save_to_target_sheets(data_to_save, st.session_state.selected_fio):
                     st.balloons()
                     st.success("🎉 Данные успешно сохранены!")
-                    # Очищаем кеш
                     st.cache_data.clear()
                 else:
                     st.error("❌ Ошибка при сохранении данных")
