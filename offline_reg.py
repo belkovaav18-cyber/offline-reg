@@ -256,10 +256,11 @@ def add_new_participant(fio, org_fee, is_residing, room=None, check_in=None, che
         worksheet = sh.worksheet(SOURCE_SHEET_NAME)
         
         # Подготовка данных для добавления
-        new_row = [fio, room if is_residing else "не проживает", 
-                  check_in.strftime("%Y-%m-%d") if check_in and is_residing else "",
-                  check_out.strftime("%Y-%m-%d") if check_out and is_residing else "",
-                  tariff if is_residing else 0]
+        if is_residing:
+            new_row = [fio, room, check_in.strftime("%Y-%m-%d") if check_in else "", 
+                      check_out.strftime("%Y-%m-%d") if check_out else "", tariff if tariff else 0]
+        else:
+            new_row = [fio, "не проживает", "", "", 0]
         
         # Добавляем строку
         worksheet.append_row(new_row)
@@ -359,7 +360,7 @@ with tab1:
                     
                     # Загружаем текущие значения
                     room_id = str(participant.get('room_id', ''))
-                    is_residing = room_id != "не проживает"
+                    is_residing = room_id != "не проживает" and room_id != "nan" and room_id != ""
                     st.session_state.new_room = room_id if is_residing else ""
                     
                     check_in_value = parse_date_safe(participant.get('Дата заезда', None)) if is_residing else datetime.now().date()
@@ -381,7 +382,7 @@ with tab1:
                 if st.session_state.participant is not None:
                     # Определяем, проживает ли участник
                     room_id_value = str(st.session_state.participant.get('room_id', ''))
-                    is_residing = room_id_value != "не проживает" and room_id_value != "" and not pd.isna(room_id_value)
+                    is_residing = room_id_value != "не проживает" and room_id_value != "nan" and room_id_value != ""
                     
                     st.divider()
                     st.subheader(f"📝 Редактирование данных: {st.session_state.selected_fio}")
@@ -546,7 +547,3 @@ with tab2:
                     st.rerun()
                 else:
                     st.error("❌ Ошибка при добавлении участника")
-                    st.error("❌ Ошибка при сохранении данных")
-
-else:
-    st.info("👆 Введите фамилию участника для поиска")
