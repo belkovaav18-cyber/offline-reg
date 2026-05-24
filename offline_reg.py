@@ -211,16 +211,11 @@ def save_to_target_sheets(participant_data, full_name, is_residing=True):
                 surname = extract_surname(full_name)
                 
                 accounting_data = [
-                    datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                     full_name,
-                    surname,
-                    participant_data.get('Комната', ''),
                     str(participant_data.get('Дата заезда', '')),
                     str(participant_data.get('Дата отъезда', '')),
-                    participant_data.get('Количество ночей', 0),
                     participant_data.get('Тариф', 0),
                     participant_data.get('Стоимость', 0),
-                    participant_data.get('Оргвзнос', 0)
                 ]
                 
                 accounting_worksheet.append_row(accounting_data)
