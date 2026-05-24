@@ -198,16 +198,11 @@ def save_to_target_sheets(participant_data, full_name, is_residing=True):
                 except gspread.WorksheetNotFound:
                     accounting_worksheet = sh.add_worksheet(title=accounting_sheet_name, rows=100, cols=20)
                     accounting_headers = [
-                        'Дата регистрации',
                         'ФИО',
-                        'Фамилия',
-                        'Комната',
                         'Дата заезда',
                         'Дата отъезда',
-                        'Количество ночей',
                         'Тариф (₽/ночь)',
                         'Стоимость проживания (₽)',
-                        'Оргвзнос (₽)'
                     ]
                     accounting_worksheet.append_row(accounting_headers)
                     st.info(f"📊 Создан новый бухгалтерский лист: '{accounting_sheet_name}'")
