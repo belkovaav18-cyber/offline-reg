@@ -49,6 +49,47 @@ except Exception as e:
     st.sidebar.error(f"❌ Не удалось открыть таблицу: {str(e)[:100]}...")
     st.stop()
 
+# --- Функция для безопасного парсинга оргвзноса ---
+def parse_org_fee_safe(fee_value):
+    """
+    Безопасно парсит значение оргвзноса.
+    Возвращает число, если это возможно, иначе возвращает исходное значение как строку.
+    """
+    if fee_value is None or pd.isna(fee_value):
+        return 0
+    
+    # Если это уже число
+    if isinstance(fee_value, (int, float)):
+        return fee_value
+    
+    # Преобразуем в строку
+    fee_str = str(fee_value).strip()
+    
+    # Проверяем пустую строку
+    if not fee_str:
+        return 0
+    
+    # Пытаемся преобразовать в число
+    try:
+        # Заменяем запятую на точку для десятичных
+        fee_str = fee_str.replace(',', '.')
+        return float(fee_str)
+    except ValueError:
+        # Если не число, возвращаем исходное значение как строку
+        return fee_str
+
+def format_org_fee_display(fee_value):
+    """
+    Форматирует оргвзнос для отображения.
+    Числа показывает с форматированием, строки - как есть.
+    """
+    if isinstance(fee_value, (int, float)):
+        if fee_value == 0:
+            return "0 ₽"
+        return f"{fee_value:,.0f} ₽"
+    else:
+        return str(fee_value)
+
 # --- Функция для безопасного парсинга дат ---
 def parse_date_safe(date_value):
     """Безопасно парсит дату из разных форматов"""
@@ -119,6 +160,11 @@ def load_source_data():
             st.sidebar.error(f"❌ Отсутствуют колонки: {missing_cols}")
             return pd.DataFrame()
         
+        # Обрабатываем колонку оргвзносов, если она есть
+        if 'оргвзнос' in df.columns:
+            df['оргвзнос_оригинал'] = df['оргвзнос'].copy()  # Сохраняем оригинал
+            df['оргвзнос'] = df['оргвзнос'].apply(parse_org_fee_safe)
+        
         st.sidebar.success(f"✅ Загружено {len(df)} записей")
         return df
         
@@ -169,6 +215,12 @@ def save_to_target_sheets(participant_data, full_name, is_residing=True):
                 cost = 0
                 fee = participant_data.get('Оргвзнос', 0)
             
+            # Если оргвзнос - не число, сохраняем как строку
+            if isinstance(fee, str):
+                fee_display = fee
+            else:
+                fee_display = fee
+            
             row_data = [
                 datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 full_name,
@@ -179,7 +231,7 @@ def save_to_target_sheets(participant_data, full_name, is_residing=True):
                 nights,
                 tariff,
                 cost,
-                fee
+                fee_display
             ]
             
             registration_worksheet.append_row(row_data)
@@ -363,11 +415,14 @@ with tab1:
                     except:
                         st.session_state.new_tariff = 0.0
                     
-                    # Оргвзнос (если есть)
-                    try:
-                        st.session_state.new_fee = float(participant.get('оргвзнос', 0)) if participant.get('оргвзнос', 0) else 0.0
-                    except:
+                    # Оргвзнос (с обработкой текстовых значений)
+                    org_fee_value = participant.get('оргвзнос', 0)
+                    if isinstance(org_fee_value, (int, float)):
+                        st.session_state.new_fee = float(org_fee_value)
+                    else:
+                        # Если это текст, показываем как 0 для ввода, но запомним оригинал
                         st.session_state.new_fee = 0.0
+                        st.session_state.org_fee_original = str(org_fee_value)
                 
                 if st.session_state.participant is not None:
                     # Определяем, проживает ли участник
@@ -376,6 +431,12 @@ with tab1:
                     
                     st.divider()
                     st.subheader(f"📝 Редактирование данных: {st.session_state.selected_fio}")
+                    
+                    # Показываем информацию об оргвзносе из исходных данных
+                    if 'оргвзнос_оригинал' in st.session_state.participant:
+                        original_fee = st.session_state.participant['оргвзнос_оригинал']
+                        if not isinstance(original_fee, (int, float)):
+                            st.info(f"📌 Текущий оргвзнос в системе: **{original_fee}**")
                     
                     if not is_residing:
                         st.info("ℹ️ Этот участник не проживает в гостинице. Будут сохранены только данные регистрации (без бухгалтерии)")
@@ -413,7 +474,8 @@ with tab1:
                             value=st.session_state.new_fee, 
                             step=100.0, 
                             format="%.0f",
-                            key="fee_input"
+                            key="fee_input",
+                            help="Если в исходных данных было текстовое значение, оно будет заменено на числовое"
                         )
                     
                     with col2:
